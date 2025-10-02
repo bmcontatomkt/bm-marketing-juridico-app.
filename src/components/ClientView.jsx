@@ -5,10 +5,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Textarea } from '@/components/ui/textarea'
 import { CheckCircle2, MessageSquare, Calendar } from 'lucide-react'
 import logo from '../assets/logo.png'
+import { db } from '../firebase'
+import { doc, getDoc, updateDoc } from 'firebase/firestore'
 
 const ClientView = () => {
   const { postId } = useParams()
   const [post, setPost] = useState(null)
+  const [loading, setLoading] = useState(true)
   const [showFeedbackForm, setShowFeedbackForm] = useState(false)
   const [feedbackText, setFeedbackText] = useState('')
   const [showSuccessMessage, setShowSuccessMessage] = useState(false)
@@ -18,48 +21,72 @@ const ClientView = () => {
     loadPost()
   }, [postId])
 
-  const loadPost = () => {
-    const savedPosts = localStorage.getItem('bmPosts')
-    if (savedPosts) {
-      const posts = JSON.parse(savedPosts)
-      const foundPost = posts.find(p => p.id === postId)
-      setPost(foundPost)
+  const loadPost = async () => {
+    try {
+      const docRef = doc(db, 'posts', postId)
+      const docSnap = await getDoc(docRef)
+      
+      if (docSnap.exists()) {
+        setPost({ id: docSnap.id, ...docSnap.data() })
+      } else {
+        setPost(null)
+      }
+    } catch (error) {
+      console.error('Erro ao carregar publicação:', error)
+      setPost(null)
+    } finally {
+      setLoading(false)
     }
   }
 
-  const handleApprove = () => {
-    const savedPosts = localStorage.getItem('bmPosts')
-    if (savedPosts) {
-      const posts = JSON.parse(savedPosts)
-      const updatedPosts = posts.map(p => 
-        p.id === postId ? { ...p, status: 'approved' } : p
-      )
-      localStorage.setItem('bmPosts', JSON.stringify(updatedPosts))
+  const handleApprove = async () => {
+    try {
+      const docRef = doc(db, 'posts', postId)
+      await updateDoc(docRef, {
+        status: 'approved'
+      })
       setPost({ ...post, status: 'approved' })
       setSuccessType('approved')
       setShowSuccessMessage(true)
+    } catch (error) {
+      console.error('Erro ao aprovar publicação:', error)
+      alert('Erro ao aprovar publicação. Tente novamente.')
     }
   }
 
-  const handleFeedbackSubmit = () => {
+  const handleFeedbackSubmit = async () => {
     if (!feedbackText.trim()) {
       alert('Por favor, escreva seu feedback antes de enviar')
       return
     }
 
-    const savedPosts = localStorage.getItem('bmPosts')
-    if (savedPosts) {
-      const posts = JSON.parse(savedPosts)
-      const updatedPosts = posts.map(p => 
-        p.id === postId ? { ...p, status: 'feedback', feedback: feedbackText } : p
-      )
-      localStorage.setItem('bmPosts', JSON.stringify(updatedPosts))
+    try {
+      const docRef = doc(db, 'posts', postId)
+      await updateDoc(docRef, {
+        status: 'feedback',
+        feedback: feedbackText
+      })
       setPost({ ...post, status: 'feedback', feedback: feedbackText })
       setSuccessType('feedback')
       setShowSuccessMessage(true)
       setShowFeedbackForm(false)
       setFeedbackText('')
+    } catch (error) {
+      console.error('Erro ao enviar feedback:', error)
+      alert('Erro ao enviar feedback. Tente novamente.')
     }
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-white via-amber-50/30 to-white flex items-center justify-center">
+        <Card className="w-full max-w-md border-amber-200 shadow-lg">
+          <CardContent className="pt-6 text-center">
+            <p className="text-gray-600">Carregando...</p>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   if (!post) {

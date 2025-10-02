@@ -6,6 +6,8 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Upload, CheckCircle2, MessageSquare, Copy, Plus } from 'lucide-react'
 import logo from '../assets/logo.png'
+import { db } from '../firebase'
+import { collection, addDoc, onSnapshot, query, orderBy } from 'firebase/firestore'
 
 const AgencyDashboard = () => {
   const [posts, setPosts] = useState([])
@@ -19,15 +21,18 @@ const AgencyDashboard = () => {
   const [showLinkModal, setShowLinkModal] = useState(false)
 
   useEffect(() => {
-    loadPosts()
-  }, [])
+    // Subscribe to real-time updates from Firestore
+    const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'))
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const postsData = []
+      querySnapshot.forEach((doc) => {
+        postsData.push({ id: doc.id, ...doc.data() })
+      })
+      setPosts(postsData)
+    })
 
-  const loadPosts = () => {
-    const savedPosts = localStorage.getItem('bmPosts')
-    if (savedPosts) {
-      setPosts(JSON.parse(savedPosts))
-    }
-  }
+    return () => unsubscribe()
+  }, [])
 
   const handleImageUpload = (e) => {
     const file = e.target.files[0]
@@ -44,7 +49,7 @@ const AgencyDashboard = () => {
     }
   }
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
     
     if (!formData.image || !formData.text || !formData.date) {
@@ -52,30 +57,32 @@ const AgencyDashboard = () => {
       return
     }
 
-    const newPost = {
-      id: Date.now().toString(),
-      image: formData.image,
-      text: formData.text,
-      date: formData.date,
-      status: 'pending',
-      feedback: null,
-      createdAt: new Date().toISOString()
+    try {
+      const newPost = {
+        image: formData.image,
+        text: formData.text,
+        date: formData.date,
+        status: 'pending',
+        feedback: null,
+        createdAt: new Date().toISOString()
+      }
+
+      const docRef = await addDoc(collection(db, 'posts'), newPost)
+
+      const link = `${window.location.origin}/client/${docRef.id}`
+      setGeneratedLink(link)
+      setShowLinkModal(true)
+
+      setFormData({
+        image: null,
+        imagePreview: null,
+        text: '',
+        date: ''
+      })
+    } catch (error) {
+      console.error('Erro ao salvar publicação:', error)
+      alert('Erro ao salvar publicação. Tente novamente.')
     }
-
-    const updatedPosts = [...posts, newPost]
-    setPosts(updatedPosts)
-    localStorage.setItem('bmPosts', JSON.stringify(updatedPosts))
-
-    const link = `${window.location.origin}/client/${newPost.id}`
-    setGeneratedLink(link)
-    setShowLinkModal(true)
-
-    setFormData({
-      image: null,
-      imagePreview: null,
-      text: '',
-      date: ''
-    })
   }
 
   const copyToClipboard = () => {
@@ -210,7 +217,7 @@ const AgencyDashboard = () => {
                   </div>
                 ) : (
                   <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
-                    {posts.slice().reverse().map((post) => (
+                    {posts.map((post) => (
                       <Card key={post.id} className="border-amber-200/50 hover:shadow-md transition-shadow">
                         <CardContent className="p-4">
                           <div className="flex gap-4">
